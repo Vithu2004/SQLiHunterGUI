@@ -53,7 +53,7 @@ app.whenReady().then(() => {
   })
 
   // IPC test
-  ipcMain.on('ping', () => new Crawler("https://www.immo-entre-particuliers.com/"))
+  ipcMain.on('ping', () => new Crawler("https://www.immo-entre-particuliers.com"))
 
   createWindow()
 
