@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 
 //My Import
 import {Crawler} from './Crawler';
+import { AttackSurface } from './AttackSurface';
 
 function createWindow() {
   // Create the browser window.
@@ -53,7 +54,10 @@ app.whenReady().then(() => {
   })
 
   // IPC test
-  ipcMain.on('ping', () => new Crawler("https://www.immo-entre-particuliers.com"));
+  ipcMain.on('ping', () => {
+    let attackSurface = new AttackSurface();
+    new Crawler(attackSurface, "https://www.scrapethissite.com");
+  });
 
   createWindow()
 
