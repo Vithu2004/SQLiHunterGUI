@@ -56,7 +56,9 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => {
     let attackSurface = new AttackSurface();
-    new Crawler(attackSurface, "https://www.scrapethissite.com");
+    let crawler = new Crawler(attackSurface, "https://www.scrapethissite.com");
+    attackSurface.addCrawler(crawler);
+    crawler.startCrawl();
   });
 
   createWindow()

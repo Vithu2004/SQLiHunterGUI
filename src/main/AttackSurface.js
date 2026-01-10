@@ -5,41 +5,52 @@ import { Crawler } from "./Crawler";
 export class AttackSurface {
     constructor() {
         this.attackSurface = [];
+        this.crawler;
+    }
+
+    addCrawler(crawler) {
+        this.crawler = crawler;
     }
 
     //Add JSON representation of each forms to attack surface
-    addFormstoAttackSurface(formsHTML, url) {
+    addFormstoAttackSurface(formsHTML, link) {
         formsHTML.each((_, form) => {
-            console.log("Found " + formsHTML.length + " forms on " + url);
             const $ = cheerio.load(form);
             const params = $('form').find('input, select, textarea').map((_, el) => $(el).attr('type') !== 'submit' ? $(el).attr('name') : null).get();
             if (params.length === 0) return;
             let jsonRepresentation = {};
-            jsonRepresentation['url'] = Crawler.formatLink($('form').attr('action') === undefined ? url : $('form').attr('action'));
+            jsonRepresentation['url'] = Crawler.formatLink($('form').attr('action') === undefined ? link : $('form').attr('action'), this.crawler);
             jsonRepresentation['method'] = $('form').attr('method') || 'GET';
             jsonRepresentation['params'] = params;
             jsonRepresentation['source'] = 'form';
-            this.attackSurface.push(jsonRepresentation);
+            if(this.checkIfInAttackSurface(jsonRepresentation, 'form')) return;
             console.log(jsonRepresentation);
+            this.attackSurface.push(jsonRepresentation);
         });
     }
 
-    addLinksToAttackSurface(linksHref, url) {
-        linksHref.forEach(link => {
-            const params = this.extractParamsFromURL(link, url);
-            if (!Crawler.isInternalLink(link) || params.length === 0) return;
-            let jsonRepresentation = {};
-            jsonRepresentation['url'] = Crawler.formatLink(link);
-            jsonRepresentation['method'] = 'GET';
-            jsonRepresentation['params'] = params;
-            jsonRepresentation['source'] = 'link';
-            console.log(jsonRepresentation);
-            this.attackSurface.push(jsonRepresentation);
-        });
+    addLinkToAttackSurface(link, params) {
+        let jsonRepresentation = {};
+        jsonRepresentation['url'] = link;
+        jsonRepresentation['method'] = 'GET';
+        jsonRepresentation['params'] = params;
+        jsonRepresentation['source'] = 'link';
+        if(this.checkIfInAttackSurface(jsonRepresentation, 'link')) return;
+        console.log(jsonRepresentation);
+        this.attackSurface.push(jsonRepresentation);
+    }
+
+    checkIfInAttackSurface(jsonRepresentation, type) {
+        for(const item of this.attackSurface){
+            if(item.source == type && item.url === jsonRepresentation.url)
+                if (jsonRepresentation.params.every(param => item.params.includes(param)))
+                    return true;
+        }
+        return false;
     }
 
     //Extract params from URL
-    extractParamsFromURL(link, url) {
+    static extractParamsFromURL(link) {
         try {
             const urlObj = new URL(link, Crawler.url);
             const params = [];

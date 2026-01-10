@@ -14,7 +14,12 @@ export class Crawler {
         
         this.attackSurface = attackSurface;
         this.visitedURL = new Set();
-        this.crawl(Crawler.url);
+    }
+    
+    async startCrawl(){
+        await this.crawl(Crawler.url);
+        console.log("Crawling finished.");
+        console.log(this.attackSurface.attackSurface);
     }
 
     //Fonction princiale du crawler
@@ -23,11 +28,11 @@ export class Crawler {
         let HTMLPage = await this.sendRequest(URL);
         let links = this.scanHTMLPage(HTMLPage, URL);
         links = links
-            .map(link => Crawler.isInternalLink(link) ? Crawler.formatLink(link) : null)
-            .filter(link => link !== null);
+            .map(link => Crawler.isInternalLink(link) ? Crawler.formatLink(link, this) : null)
+            .filter(link => link !== null && link !== undefined);
         
-        console.log(links);
         console.log("Found " + links.length + " internal links on " + URL);
+        console.log(links);
         this.visitedURL.add(URL);
         for(const link of links){
             if(!this.visitedURL.has(link))
@@ -58,7 +63,6 @@ export class Crawler {
         
         //Links
         const aLinks = $('a').map((_, el) => $(el).attr("href")).get();
-        this.attackSurface.addLinksToAttackSurface(aLinks, URL);
         return aLinks;
     }
 
@@ -67,7 +71,7 @@ export class Crawler {
     //Return true si interne, false si externe
     static isInternalLink(link) {
         try {
-            const host = new URL(link, this.url).hostname;
+            const host = new URL(link, Crawler.url).hostname;
             return host === Crawler.urlWWW;
         } catch (e) {
             console.log("Error ici: " + e);
@@ -76,7 +80,7 @@ export class Crawler {
     }
     
     //Formater le lien
-    static formatLink(link) {
+    static formatLink(link, crawler) {
         let formattedLink = link.toLowerCase();
         if(link.includes('#')){
             formattedLink = formattedLink.split('#')[0];
@@ -85,11 +89,30 @@ export class Crawler {
             formattedLink = formattedLink.startsWith('/') ? formattedLink.slice(1) : formattedLink;
             formattedLink = Crawler.url + formattedLink;
         }
+        const params = AttackSurface.extractParamsFromURL(formattedLink);
+        if(params.length > 0){
+            crawler.addSignatureToVisitedURLs(formattedLink, params);
+            return;
+        }
+
         formattedLink = Crawler.ensureTrailingSlashatEnd(formattedLink);
         return formattedLink;
     }
 
+    addSignatureToVisitedURLs(formattedLink, params) {
+        formattedLink = Crawler.removeTrailingSlashatEnd(formattedLink);
+        this.attackSurface.addLinkToAttackSurface(formattedLink.split("=")[0], params);
+        let signature = "GET | " + formattedLink.split("?")[0] + " | " + params;
+            if(!this.visitedURL.has(signature))
+                this.visitedURL.add(signature);
+                console.log("Visited URLs updated with: " + signature);
+    }
+
     static ensureTrailingSlashatEnd(url) {
         return url.endsWith('/') ? url : url + '/';
+    }
+
+    static removeTrailingSlashatEnd(url) {
+        return url.endsWith('/') ? url.slice(0, -1) : url;
     }
 }
