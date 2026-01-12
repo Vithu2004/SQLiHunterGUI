@@ -1,69 +1,97 @@
-import * as cheerio from 'cheerio';
-
+import * as cheerio from "cheerio";
 import { Crawler } from "./Crawler";
 
 export class AttackSurface {
-    constructor() {
-        this.attackSurface = [];
-        this.crawler;
+    constructor(crawler) {
+        this.attackSurface = []; // Liste de tous les forms et liens détectés qui peuvent être attaqués
+        this.crawler = crawler; // Référence au crawler
     }
 
-    addCrawler(crawler) {
-        this.crawler = crawler;
-    }
-
-    //Add JSON representation of each forms to attack surface
+    /**
+     * Ajoute les forms d'une page à l'attack surface
+     * @param {Cheerio} formsHTML - Cheerio object contenant tous les forms
+     * @param {string} link - URL de la page
+     */
     addFormstoAttackSurface(formsHTML, link) {
         formsHTML.each((_, form) => {
             const $ = cheerio.load(form);
-            const params = $('form').find('input, select, textarea').map((_, el) => $(el).attr('type') !== 'submit' ? $(el).attr('name') : null).get();
-            if (params.length === 0) return;
-            let jsonRepresentation = {};
-            jsonRepresentation['url'] = Crawler.formatLink($('form').attr('action') === undefined ? link : $('form').attr('action'), this.crawler);
-            jsonRepresentation['method'] = $('form').attr('method') || 'GET';
-            jsonRepresentation['params'] = params;
-            jsonRepresentation['source'] = 'form';
-            if(this.checkIfInAttackSurface(jsonRepresentation, 'form')) return;
-            console.log(jsonRepresentation);
-            this.attackSurface.push(jsonRepresentation);
+
+            // Extraction des paramètres des inputs (ignore submit)
+            const params = $("form")
+                .find("input, select, textarea")
+                .map((_, el) =>
+                    $(el).attr("type") !== "submit" ? $(el).attr("name") : null
+                )
+                .get()
+                .filter(Boolean);
+
+            if (params.length < 0) return;
+
+            const action = $("form").attr("action") ?? link;
+
+            const json = {
+                url: Crawler.formatLink(action, this.crawler),
+                method: $("form").attr("method").toUpperCase() || "GET",
+                params,
+                source: "form",
+            };
+
+            if (this.isAlreadyInAttackSurface(json)) return;
+
+            console.log(json);
+            this.attackSurface.push(json);
         });
     }
 
+    /**
+     * Ajoute un lien GET à l'attack surface
+     * @param {string} link - URL
+     * @param {string[]} params - Paramètres GET
+     */
     addLinkToAttackSurface(link, params) {
-        let jsonRepresentation = {};
-        jsonRepresentation['url'] = link;
-        jsonRepresentation['method'] = 'GET';
-        jsonRepresentation['params'] = params;
-        jsonRepresentation['source'] = 'link';
-        if(this.checkIfInAttackSurface(jsonRepresentation, 'link')) return;
-        console.log(jsonRepresentation);
-        this.attackSurface.push(jsonRepresentation);
+        const json = {
+            url: link,
+            method: "GET",
+            params,
+            source: "link",
+        };
+
+        if (this.isAlreadyInAttackSurface(json)) return;
+
+        console.log(json);
+        this.attackSurface.push(json);
     }
 
-    checkIfInAttackSurface(jsonRepresentation, type) {
-        for(const item of this.attackSurface){
-            if(item.source == type && item.url === jsonRepresentation.url)
-                if (jsonRepresentation.params.every(param => item.params.includes(param)))
-                    return true;
-        }
-        return false;
+    /**
+     * Vérifie si un élément est déjà présent dans l'attack surface
+     * @param {object} candidate - Objet à tester
+     * @returns {boolean}
+     */
+    isAlreadyInAttackSurface(candidate) {
+        return this.attackSurface.some(item =>
+            item.source === candidate.source &&
+            item.url === candidate.url &&
+            candidate.params.every(p => item.params.includes(p))
+        );
     }
 
-    //Extract params from URL
+    /**
+     * Extrait les paramètres GET d'une URL
+     * @param {string} link - URL
+     * @returns {string[]} - Liste des paramètres
+     */
     static extractParamsFromURL(link) {
         try {
-            const urlObj = new URL(link, Crawler.url);
-            const params = [];
-            urlObj.searchParams.forEach((_, key) => {
-                params.push(key);
-            });
-            return params;
-        } catch (e) {
-            console.log("Error extracting params: " + e);
+            const url = new URL(link, Crawler.baseUrl);
+            return [...url.searchParams.keys()];
+        } catch {
             return [];
         }
     }
 
+    /**
+     * Retourne l'attack surface complète
+     */
     getAttackSurface() {
         return this.attackSurface;
     }

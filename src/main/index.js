@@ -6,6 +6,7 @@ import icon from '../../resources/icon.png?asset'
 //My Import
 import {Crawler} from './Crawler';
 import { AttackSurface } from './AttackSurface';
+import { Scanner } from './Scanner';
 
 function createWindow() {
   // Create the browser window.
@@ -54,11 +55,12 @@ app.whenReady().then(() => {
   })
 
   // IPC test
-  ipcMain.on('ping', () => {
-    let attackSurface = new AttackSurface();
-    let crawler = new Crawler(attackSurface, "https://www.scrapethissite.com");
-    attackSurface.addCrawler(crawler);
-    crawler.startCrawl();
+  ipcMain.on('ping', async () => {
+    let crawler = new Crawler("https://0aee0096033db2498065801400af0081.web-security-academy.net");
+    let attackSurface = await crawler.startCrawl();
+    console.log("Starting injection...");
+    let scanner = new Scanner(attackSurface);
+    scanner.injectPayloads("'");
   });
 
   createWindow()

@@ -1,118 +1,173 @@
 import axios from "axios";
-import * as cheerio from 'cheerio';
-
+import * as cheerio from "cheerio";
 import { AttackSurface } from "./AttackSurface";
 
 export class Crawler {
-    static url = "";
-    static urlWWW = "";
+    // Base URL complète (ex: https://example.com/)
+    static baseUrl = "";
+    // Host de base sans http/https (ex: example.com)
+    static baseHost = "";
 
-    //Constructeur, pense à chercher les cas ou l'utilisateur n'entre pas http ou https
-    constructor(attackSurface, url) {
-        Crawler.url = Crawler.ensureTrailingSlashatEnd(url);
-        Crawler.urlWWW = url.replace("https://", "").replace("http://", "").replace("/", "");
+    /**
+     * Constructeur du Crawler
+     * @param {AttackSurface} attackSurface - Instance pour stocker les forms et liens détectés
+     * @param {string} url - URL de départ du crawl
+     */
+    constructor(url) {
+        Crawler.baseUrl = Crawler.ensureTrailingSlash(url);
+        Crawler.baseHost = url.replace("https://", "").replace("http://", "").replace("/", "");
         
-        this.attackSurface = attackSurface;
-        this.visitedURL = new Set();
+        this.attackSurface = new AttackSurface(this);
+        this.visitedURL = new Set(); // Stocke les URLs déjà visitées
     }
-    
-    async startCrawl(){
-        await this.crawl(Crawler.url);
+
+    /**
+     * Démarre le crawl à partir de la base URL
+     * Affiche le résultat final dans la console
+     */
+    async startCrawl() {
+        await this.crawl(Crawler.baseUrl);
         console.log("Crawling finished.");
         console.log(this.attackSurface.attackSurface);
+        return this.attackSurface;
     }
 
-    //Fonction princiale du crawler
-    async crawl(URL){
-        console.log("-----------Crawling: " + URL + " -----------");
-        let HTMLPage = await this.sendRequest(URL);
-        let links = this.scanHTMLPage(HTMLPage, URL);
-        links = links
+    /**
+     * Fonction principale du crawler : visite la page, récupère les liens internes et les explore récursivement
+     * @param {string} url - URL à crawler
+     */
+    async crawl(url) {
+        console.log(`----------- Crawling: ${url} -----------`);
+
+        const html = await this.sendRequest(url);
+
+        // Récupération des liens internes valides
+        const links = this.scanHTMLPage(html, url)
             .map(link => Crawler.isInternalLink(link) ? Crawler.formatLink(link, this) : null)
             .filter(link => link !== null && link !== undefined);
-        
-        console.log("Found " + links.length + " internal links on " + URL);
+
+        console.log(`Found ${links.length} internal links on ${url}`);
         console.log(links);
-        this.visitedURL.add(URL);
-        for(const link of links){
-            if(!this.visitedURL.has(link))
+
+        this.visitedURL.add(url);
+
+        // Crawl récursif des liens internes non visités
+        for (const link of links) {
+            if (!this.visitedURL.has(link)) {
                 await this.crawl(link);
+            }
         }
     }
 
-    //Envoyer une requete HTTP pour recuperer le contenu HTML d'une page
-    async sendRequest(URL) {
+    /**
+     * Envoie une requête HTTP pour récupérer le contenu HTML d'une page
+     * @param {string} url - URL de la page
+     * @returns {string|null} - HTML de la page ou null si erreur
+     */
+    async sendRequest(url) {
         try {
-            const response = await axios.get(URL);
+            const response = await axios.get(url);
             return response.data;
         } catch (error) {
-            console.log("can't get into the page : " + error);
-            return "error";
+            console.log("Can't access page:", error.message);
+            return null;
         }
     }
 
-    //Analyser le contenu HTML pour extraire les liens
-    scanHTMLPage(HTMLPage, URL) {
-        if(HTMLPage === "error") return [];
-        const $ = cheerio.load(HTMLPage);
+    /**
+     * Analyse le contenu HTML pour extraire les forms et liens
+     * @param {string} html - Contenu HTML de la page
+     * @param {string} url - URL de la page
+     * @returns {string[]} - Liste des liens présents sur la page
+     */
+    scanHTMLPage(html, url) {
+        if (html === null) return [];
 
-        //Forms
-        const formsHTML = $('form');
-        if (formsHTML.length > 0)
-            this.attackSurface.addFormstoAttackSurface(formsHTML, URL);
-        
-        //Links
-        const aLinks = $('a').map((_, el) => $(el).attr("href")).get();
-        return aLinks;
+        const $ = cheerio.load(html);
+
+        // Analyse des forms et ajout dans l'attack surface
+        const forms = $("form");
+        if (forms.length) {
+            this.attackSurface.addFormstoAttackSurface(forms, url);
+        }
+        console.log("a :" + $("a"));
+        // Extraction des liens <a href>
+        return $("a")
+            .map((_, el) => $(el).attr("href"))
+            .get();
     }
 
-    //Vérifier si le lien est externe ou interne, ignore les sous-domaines pour l'instant, sera rajouté plus tard
-    //Les # sont les formulaires, gérer ça plus tard
-    //Return true si interne, false si externe
+    /**
+     * Vérifie si un lien est interne au site (même host)
+     * @param {string} link - URL à tester
+     * @returns {boolean} - true si interne, false sinon
+     */
     static isInternalLink(link) {
         try {
-            const host = new URL(link, Crawler.url).hostname;
-            return host === Crawler.urlWWW;
-        } catch (e) {
-            console.log("Error ici: " + e);
+            const host = new URL(link, Crawler.baseUrl).hostname;
+            return host === Crawler.baseHost;
+        } catch {
             return false;
         }
     }
-    
-    //Formater le lien
+
+    /**
+     * Formate un lien en URL complète, gère les paramètres GET et les ancres (#)
+     * @param {string} link - Lien à formater
+     * @param {Crawler} crawler - Instance du crawler pour ajouter à visitedURL
+     * @returns {string|undefined} - Lien formaté ou undefined si déjà traité
+     */
     static formatLink(link, crawler) {
-        let formattedLink = link.toLowerCase();
-        if(link.includes('#')){
-            formattedLink = formattedLink.split('#')[0];
+        // Mise en minuscule et suppression des ancres
+        let formatted = link.toLowerCase().split("#")[0];
+
+        // Si le lien est relatif, on ajoute la base URL
+        if (!formatted.includes(Crawler.baseUrl)) {
+            formatted = formatted.startsWith("/")
+                ? formatted.slice(1)
+                : formatted;
+            formatted = this.ensureTrailingSlash(Crawler.baseUrl) + formatted;
         }
-        if(!link.includes(Crawler.url)){
-            formattedLink = formattedLink.startsWith('/') ? formattedLink.slice(1) : formattedLink;
-            formattedLink = Crawler.url + formattedLink;
-        }
-        const params = AttackSurface.extractParamsFromURL(formattedLink);
-        if(params.length > 0){
-            crawler.addSignatureToVisitedURLs(formattedLink, params);
+
+        // Extraction des paramètres GET
+        const params = AttackSurface.extractParamsFromURL(formatted);
+        if (params.length > 0) {
+            crawler.addSignatureToVisitedURLs(formatted, params);
             return;
         }
 
-        formattedLink = Crawler.ensureTrailingSlashatEnd(formattedLink);
-        return formattedLink;
+        return formatted;
     }
 
-    addSignatureToVisitedURLs(formattedLink, params) {
-        formattedLink = Crawler.removeTrailingSlashatEnd(formattedLink);
-        this.attackSurface.addLinkToAttackSurface(formattedLink.split("=")[0], params);
-        let signature = "GET | " + formattedLink.split("?")[0] + " | " + params;
-            if(!this.visitedURL.has(signature))
-                this.visitedURL.add(signature);
-                console.log("Visited URLs updated with: " + signature);
+    /**
+     * Ajoute un lien et ses paramètres à visitedURL avec signature unique
+     * @param {string} link - URL du lien
+     * @param {string[]} params - Paramètres GET extraits
+     */
+    addSignatureToVisitedURLs(link, params) {
+        const cleanLink = Crawler.removeTrailingSlash(link);
+        const base = cleanLink.split("?")[0];
+
+        this.attackSurface.addLinkToAttackSurface(base, params);
+
+        const signature = `GET | ${base} | ${params}`;
+        if (!this.visitedURL.has(signature)) {
+            this.visitedURL.add(signature);
+            console.log("Visited URLs updated with:", signature);
+        }
     }
 
-    static ensureTrailingSlashatEnd(url) {
-        return url.endsWith('/') ? url : url + '/';
+    /**
+     * Ajoute un / à la fin de l'URL si absent
+     */
+    static ensureTrailingSlash(url) {
+        return url.endsWith("/") ? url : `${url}/`;
     }
 
-    static removeTrailingSlashatEnd(url) {
-        return url.endsWith('/') ? url.slice(0, -1) : url;
+    /**
+     * Supprime le / final de l'URL si présent
+     */
+    static removeTrailingSlash(url) {
+        return url.endsWith("/") ? url.slice(0, -1) : url;
     }
 }
