@@ -56,7 +56,7 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', async () => {
-    let crawler = new Crawler("https://0aee0096033db2498065801400af0081.web-security-academy.net");
+    let crawler = new Crawler("https://0a73002404204ff880de536800360077.web-security-academy.net");
     let attackSurface = await crawler.startCrawl();
     console.log("Starting injection...");
     let scanner = new Scanner(attackSurface);

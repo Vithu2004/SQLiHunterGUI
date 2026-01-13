@@ -90,7 +90,6 @@ export class Crawler {
         if (forms.length) {
             this.attackSurface.addFormstoAttackSurface(forms, url);
         }
-        console.log("a :" + $("a"));
         // Extraction des liens <a href>
         return $("a")
             .map((_, el) => $(el).attr("href"))
