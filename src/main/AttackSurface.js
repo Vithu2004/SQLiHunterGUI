@@ -8,30 +8,22 @@ export class AttackSurface {
     }
 
     /**
-     * Ajoute les forms d'une page à l'attack surface
-     * @param {Cheerio} formsHTML - Cheerio object contenant tous les forms
+ * Ajoute les forms d'une page à l'attack surface
+     * @param {cheerio} formsHTML - Cheerio object contenant tous les forms
      * @param {string} link - URL de la page
      */
     addFormstoAttackSurface(formsHTML, link) {
         formsHTML.each((_, form) => {
             const $ = cheerio.load(form);
+            const params = this.extractParamsFromForm($);
 
-            // Extraction des paramètres des inputs (ignore submit)
-            const params = $("form")
-                .find("input, select, textarea")
-                .map((_, el) =>
-                    $(el).attr("type") !== "submit" ? $(el).attr("name") : null
-                )
-                .get()
-                .filter(Boolean);
-
-            if (params.length < 0) return;
+            if (params.length == 0) return;
 
             const action = $("form").attr("action") ?? link;
 
             const json = {
                 url: Crawler.formatLink(action, this.crawler),
-                method: $("form").attr("method").toUpperCase() || "GET",
+                method: ($("form").attr("method") ?? "GET").toUpperCase(),
                 params,
                 source: "form",
             };
@@ -41,6 +33,39 @@ export class AttackSurface {
             console.log(json);
             this.attackSurface.push(json);
         });
+    }
+
+    extractParamsFromForm($) {
+        const csrftoken = this.extractCSRFToken($);
+
+        // Extraction des paramètres des inputs (ignore submit)
+        const params = $("form")
+            .find("input, select, textarea")
+            .map((_, el) =>
+                $(el).attr("type") !== "submit"
+                    ? $(el).attr("name") : null
+            )
+            .get()
+            .filter(name => name !== undefined && name !== null && name.includes("csrf") === false && name.includes("token") === false);
+
+        // Ajout du token CSRF si détecté
+        if (csrftoken) {
+            params.push(csrftoken);
+        }
+
+        return params;
+    }
+
+    extractCSRFToken($) {
+        let csrftoken = null;
+        const csrfParamName = $("form").find("input[name*='csrf' i ], input[name*='token' i ]").attr("name");
+        if (csrfParamName !== undefined) {
+            csrftoken = 
+            {
+                [csrfParamName] : $("form").find("input[name*='csrf' i ], input[name*='token' i ]").attr("value")
+            }
+        }
+        return csrftoken;
     }
 
     /**
@@ -63,19 +88,6 @@ export class AttackSurface {
     }
 
     /**
-     * Vérifie si un élément est déjà présent dans l'attack surface
-     * @param {object} candidate - Objet à tester
-     * @returns {boolean}
-     */
-    isAlreadyInAttackSurface(candidate) {
-        return this.attackSurface.some(item =>
-            item.source === candidate.source &&
-            item.url === candidate.url &&
-            candidate.params.every(p => item.params.includes(p))
-        );
-    }
-
-    /**
      * Extrait les paramètres GET d'une URL
      * @param {string} link - URL
      * @returns {string[]} - Liste des paramètres
@@ -87,6 +99,19 @@ export class AttackSurface {
         } catch {
             return [];
         }
+    }
+
+        /**
+     * Vérifie si un élément est déjà présent dans l'attack surface
+     * @param {object} candidate - Objet à tester
+     * @returns {boolean}
+     */
+    isAlreadyInAttackSurface(candidate) {
+        return this.attackSurface.some(item =>
+            item.source === candidate.source &&
+            item.url === candidate.url &&
+            candidate.params.every(p => item.params.includes(p))
+        );
     }
 
     /**

@@ -1,5 +1,5 @@
-import axios from "axios";
 import { Crawler } from "./Crawler.js";
+import { sendRequest, ensureTrailingSlash, removeTrailingSlash } from "./utils.js";
 
 export class Scanner {
     /**
@@ -18,39 +18,13 @@ export class Scanner {
     async injectPayloads(payload) {
         for (const cible of this.attackSurface.attackSurface) {
             const url = new URL(cible.url);
-
+            const baseline = await sendRequest(url.toString());
             if (cible.source === "link") {
-                await this.injectPayloadsGET(cible, url.toString(), payload);
+                await this.injectPayloadsGET(cible, url.toString(), payload, baseline);
             } 
             else if (cible.source === "form") {
-                await this.injectPayloadsForm(cible, url, payload);
+                await this.injectPayloadsForm(cible, url, payload, baseline);
             }
-        }
-    }
-
-    /**
-     * Injecte un payload dans un url ou un formulaire GET  utilisant la méthode GET
-     * Chaque paramètre est testé individuellement
-     * @param {object} cible - Formulaire cible
-     * @param {string} url - URL du formulaire
-     * @param {string} payload - Payload à injecter
-     */
-    async injectPayloadsGET(cible, url, payload) {
-        // Création des paramètres par défaut
-        const formParams = cible.params.map(param => [param, "test"]);
-
-        for (const [param, value] of formParams) {
-            let craftedUrl = Crawler.ensureTrailingSlash(url) +`?${param}=${value}${payload}`;
-
-            // Ajout des autres paramètres sans payload
-            for (const [otherParam, otherValue] of formParams) {
-                if (otherParam !== param) {
-                    craftedUrl += `&${otherParam}=${otherValue}`;
-                }
-            }
-
-            console.log(`Injecting payload into form (GET): ${craftedUrl}`);
-            await this.sendRequest(craftedUrl, "GET");
         }
     }
 
@@ -60,14 +34,45 @@ export class Scanner {
      * @param {URL} url - URL du formulaire
      * @param {string} payload - Payload à injecter
      */
-    async injectPayloadsForm(cible, url, payload) {
+    async injectPayloadsForm(cible, url, payload, baseline) {
         const formUrl = url.toString();
 
         if (cible.method === "GET") {
-            await this.injectPayloadsGET(cible, formUrl, payload);
+            await this.injectPayloadsGET(cible, formUrl, payload, baseline);
         } 
         else if (cible.method === "POST") {
-            await this.injectPayloadsFormPOST(cible, formUrl, payload);
+            await this.injectPayloadsFormPOST(cible, formUrl, payload, baseline);
+        }
+    }
+
+        /**
+     * Injecte un payload dans un url ou un formulaire GET  utilisant la méthode GET
+     * Chaque paramètre est testé individuellement
+     * @param {object} cible - Formulaire cible
+     * @param {string} url - URL du formulaire
+     * @param {string} payload - Payload à injecter
+     */
+    async injectPayloadsGET(cible, url, payload, baseline) {
+        // Création des paramètres par défaut
+        const params = cible.params.map(param => {
+            if(param instanceof Object) {
+                return [Object.keys(param)[0], Object.values(param)[0]];
+            } else {
+                return [param, "test"];
+            }
+        });
+
+        for (const [param, value] of params) {
+            let craftedUrl = removeTrailingSlash(url) +`?${param}=${value}${payload}`;
+            // Ajout des autres paramètres sans payload
+            for (const [otherParam, otherValue] of params) {
+                if (otherParam !== param) {
+                    craftedUrl += `&${otherParam}=${otherValue}`;
+                }
+            }
+
+            console.log(`Injecting payload into form (GET): ${craftedUrl}`);
+            const response = await sendRequest(craftedUrl);
         }
     }
 
@@ -78,45 +83,37 @@ export class Scanner {
      * @param {string} url - URL du formulaire
      * @param {string} payload - Payload à injecter
      */
-    async injectPayloadsFormPOST(cible, url, payload) {
+    async injectPayloadsFormPOST(cible, url, payload, baseline) {
         for (const param of cible.params) {
             const postData = {};
 
             // Paramètre ciblé avec payload
-            postData[param] = `test${payload}`;
+            if(param instanceof Object) {
+                const key = Object.keys(param)[0];
+                postData[key] = `${Object.values(param)[0]}${payload}`;
+            } else {
+                postData[param] = `test${payload}`;
+            }
 
             // Autres paramètres avec valeur par défaut
             cible.params.forEach(otherParam => {
                 if (otherParam !== param) {
-                    postData[otherParam] = "test";
+                    if(otherParam instanceof Object) {
+                        const key = Object.keys(otherParam)[0];
+                        postData[key] = Object.values(otherParam)[0];
+                    } else {
+                        postData[otherParam] = "test";
+                    }
                 }
             });
-
-            console.log(`Injecting payload into form (POST): ${url} with data ${JSON.stringify(postData)}`);
-            await this.sendRequest(url, "POST", postData);
+            console.log(postData);
+            console.log(`Injecting payload into form (POST): ${url}`);
+            const response = await sendRequest(url, "POST", postData);
+            //const score = this.scorePayloadResponse(baseline, response);
         }
     }
 
-    /**
-     * Envoie une requête HTTP GET ou POST
-     * @param {string} url - URL cible
-     * @param {string} method - Méthode HTTP ("GET" ou "POST")
-     * @param {object} [data] - Données POST (optionnel)
-     * @returns {any|null} - Réponse du serveur ou null en cas d’erreur
-     */
-    async sendRequest(url, method = "GET", data = null) {
-        try {
-            const response =
-                method === "GET"
-                    ? await axios.get(url)
-                    : await axios.post(url, data);
-
-            console.log(`Response status for ${url}: ${response.status}`);
-            return response.data;
-        } catch (error) {
-            console.log("Can't access page:", error.message);
-            return null;
-        }
+    scorePayloadResponse(baseline, response) {
+        
     }
-    
 }
