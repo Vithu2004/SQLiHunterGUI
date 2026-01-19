@@ -18,13 +18,15 @@ export class Scanner {
     async injectPayloads(payload) {
         for (const cible of this.attackSurface.attackSurface) {
             const url = new URL(cible.url);
-            const baseline = await sendRequest(url.toString());
             if (cible.source === "link") {
-                await this.injectPayloadsGET(cible, url.toString(), payload, baseline);
+                await this.injectPayloadsGET(cible, url.toString(), payload);
             } 
             else if (cible.source === "form") {
+                const baseline = await sendRequest(url.toString());
                 await this.injectPayloadsForm(cible, url, payload, baseline);
             }
+            console.log(`Finished injecting payloads for ${cible.url}`);
+            console.log('---------------------------------------');
         }
     }
 
@@ -52,15 +54,21 @@ export class Scanner {
      * @param {string} url - URL du formulaire
      * @param {string} payload - Payload à injecter
      */
-    async injectPayloadsGET(cible, url, payload, baseline) {
+    async injectPayloadsGET(cible, url, payload, baseline = null) {
         // Création des paramètres par défaut
         const params = cible.params.map(param => {
             if(param instanceof Object) {
                 return [Object.keys(param)[0], Object.values(param)[0]];
             } else {
-                return [param, "test"];
+                return [param, "1"];
             }
         });
+        let craftedUrlBaseline = "";
+        for (const [param, value] of params) {
+            craftedUrlBaseline = removeTrailingSlash(url) +`?${param}=${value}`;
+        }
+        const baselineResponse = await sendRequest(craftedUrlBaseline);
+
 
         for (const [param, value] of params) {
             let craftedUrl = removeTrailingSlash(url) +`?${param}=${value}${payload}`;
@@ -71,10 +79,11 @@ export class Scanner {
                 }
             }
 
-            console.log(`Injecting payload into form (GET): ${craftedUrl}`);
+            console.log(`Injecting payload into (GET): ${craftedUrl}`);
             const response = await sendRequest(craftedUrl);
         }
     }
+
 
     /**
      * Injecte un payload dans un formulaire utilisant la méthode POST
@@ -109,6 +118,7 @@ export class Scanner {
             console.log(postData);
             console.log(`Injecting payload into form (POST): ${url}`);
             const response = await sendRequest(url, "POST", postData);
+            //Probleme avec le formulaire, tu recois une reponse 200 quand tu fais l'injection à la place d'internal server error
             //const score = this.scorePayloadResponse(baseline, response);
         }
     }
