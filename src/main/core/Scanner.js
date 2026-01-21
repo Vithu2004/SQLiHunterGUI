@@ -62,32 +62,12 @@ export class Scanner {
         const cibles = this.attackSurface.getAttackSurface()
         for (const cible of cibles) {
             console.log(cible);
-            const baselineResponse = await this.getBaselineResponse(cible);
-            const injecter = new Injecter(cible, baselineResponse);
+            const injecter = new Injecter(cible);
             const result = await injecter.inject();
+            console.log("-------------------------------")
         }
     }
 
-    addToAttackResults(result) {
-        if (result.confidence === "CONFIRMED") this.attackResults.push(result);
-
-    }
-
-    //Recois une réponses classique sans sqli pour la baseline
-    async getBaselineResponse(cible) {
-        const params = Injecter.createParams(cible);
-
-        if (cible.source === "link") {
-            let craftedUrlBaseline = "";
-            for (const [param, value] of params) {
-                craftedUrlBaseline = removeTrailingSlash(cible.url) +`?${param}=${value}`;
-            }   
-            return await sendRequest(craftedUrlBaseline);
-        }
-            return await sendRequest(cible.url);
-    }
-
-    //CONTINUER ICI
     static scanFuzzingPayload(baseline, response) {
         const statusErrorResult = Scanner.checkStatusError(response);
         const SQLErrorResult = Scanner.checkSQLError(baseline, response);
@@ -99,6 +79,31 @@ export class Scanner {
         return null;
     }
 
+    static scanBooleanPayload(responseTrue, responseFalse) {
+        const responseTrueContentLength = Scanner.getContentLength(responseTrue);
+        const responseFalseContentLength = Scanner.getContentLength(responseFalse);
+        if ((responseTrueContentLength + (responseTrueContentLength * 0.02)) >= responseFalseContentLength 
+            && (responseTrueContentLength - (responseTrueContentLength * 0.02)) <= responseFalseContentLength) {
+                return true;
+        }
+        return false;
+
+    }
+    
+    static getContentLength(response) {
+        if (response.headers['content-length'] === undefined || response.headers['content-length'] === null) {
+            const size = Buffer.byteLength(
+                typeof response.data === "string"
+                    ? response.data
+                    : JSON.stringify(response.data)
+                );
+            console.log(size);
+            return size;
+        }
+            return response.headers['content-length'];
+    }
+
+
     static checkStatusError(response) {
         const status = response.status;
         let error = {
@@ -106,6 +111,7 @@ export class Scanner {
             error : status,
             message : status !== 200 ? response.response.data : null
         };
+        
         switch (status) {
             case 500 :
                 error.addToScore = 45;
@@ -115,6 +121,7 @@ export class Scanner {
                 error.addToScore = 25;
                 return error;
             case 403 : 
+            case 400 :
             case 406 :
                 error.addToScore = 20;
                 return error;
@@ -122,7 +129,6 @@ export class Scanner {
                 return null;
         } 
     }
-
 
     static checkSQLError(baseline, response) {
         const htmlResponse = response.status !== 200 ? response.response.data.toLowerCase() : response.data.toLowerCase();

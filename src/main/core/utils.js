@@ -17,8 +17,8 @@ export async function sendRequest(url, method = "GET", data = null) {
     try {
         let response = null;
             if(method === "GET") {
-                const urlPa = new URL(url);
-                response = await client.get(urlPa.toString());
+                const urlFormatted = new URL(url);
+                response = await client.get(urlFormatted.toString());
             }
             else {
                 const params = new URLSearchParams(data);
@@ -33,7 +33,7 @@ export async function sendRequest(url, method = "GET", data = null) {
     } catch (error) {
         if (error.response) {
             // Le serveur a répondu avec un code ≠ 2xx
-            console.log('Status :', error.response.status);
+            console.log('Error Status SEND REQUEST :', error.response.status);
             //console.log('Message :', error.response.data);
         } else if (error.request) {
             // La requête a été envoyée mais aucune réponse reçue
