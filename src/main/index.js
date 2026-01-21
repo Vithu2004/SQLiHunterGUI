@@ -4,9 +4,10 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 //My Import
-import {Crawler} from './Crawler';
-import { AttackSurface } from './AttackSurface';
-import { Scanner } from './Scanner';
+
+import { Crawler } from './core/Crawler'
+import { Scanner } from './core/Scanner'
+
 
 function createWindow() {
   // Create the browser window.
@@ -57,11 +58,11 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('send-url', async (_, url) => {
     console.log(url);
-    let crawler = new Crawler("https://0ab600e90409311d806b494a00d10016.web-security-academy.net");
+    let crawler = new Crawler("https://0a0e005b037ac93680e008f600250084.web-security-academy.net");
     let attackSurface = await crawler.startCrawl();
     console.log("Starting injection...");
     let scanner = new Scanner(attackSurface);
-    scanner.injectPayloads("'");
+    scanner.scan();
   });
 
   createWindow()

@@ -17,11 +17,16 @@ export async function sendRequest(url, method = "GET", data = null) {
     try {
         let response = null;
             if(method === "GET") {
-                response = await client.get(url);
+                const urlPa = new URL(url);
+                response = await client.get(urlPa.toString());
             }
             else {
-                data = new URLSearchParams(data);
-                response = await client.post(url, data);
+                const params = new URLSearchParams(data);
+                response = await client.post(url, params, {
+                    headers : {
+                        "Content-Type" : "application/x-www-form-urlencoded"
+                    }
+                });
             }
         console.log(`Response Status: ${response.status} for ${method} request to ${url}`);
         return response;
@@ -29,7 +34,7 @@ export async function sendRequest(url, method = "GET", data = null) {
         if (error.response) {
             // Le serveur a répondu avec un code ≠ 2xx
             console.log('Status :', error.response.status);
-            console.log('Message :', error.response.data);
+            //console.log('Message :', error.response.data);
         } else if (error.request) {
             // La requête a été envoyée mais aucune réponse reçue
             console.log('Aucune réponse du serveur');
@@ -54,4 +59,3 @@ export  function ensureTrailingSlash(url) {
 export function removeTrailingSlash(url) {
     return url.endsWith("/") ? url.slice(0, -1) : url;
 }
- 
