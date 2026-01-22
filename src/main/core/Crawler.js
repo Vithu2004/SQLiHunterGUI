@@ -29,7 +29,7 @@ export class Crawler {
      */
     async startCrawl() {
         await this.crawl(Crawler.baseUrl);
-        console.log(`----------- Crawling Finished -----------`);
+        //console.log(`----------- Crawling Finished -----------`);
         return this.attackSurface;
     }
 
@@ -38,7 +38,7 @@ export class Crawler {
      * @param {string} url - URL à crawler
      */
     async crawl(url) {
-        console.log(`----------- Crawling: ${url} -----------`);
+        //console.log(`----------- Crawling: ${url} -----------`);
 
         const html = await sendRequest(url)
             .then(response => response ? response.data : null)
@@ -49,8 +49,8 @@ export class Crawler {
             .map(link => this.isInternalLink(link) ? Crawler.formatLink(link, this) : null)
             .filter(link => link !== null && link !== undefined);
 
-        console.log(`Found ${links.length} internal links on ${url}`);
-        console.log(links);
+        //console.log(`Found ${links.length} internal links on ${url}`);
+        //console.log(links);
 
         this.visitedURL.add(url);
 
@@ -69,7 +69,7 @@ export class Crawler {
      * @returns {string[]} - Liste des liens présents sur la page
      */
     scanHTMLPage(html, url) {
-        if (html === null) return [];
+        if (html === null || html === undefined) return [];
         const $ = cheerio.load(html);
 
         // Analyse des forms et ajout dans l'attack surface

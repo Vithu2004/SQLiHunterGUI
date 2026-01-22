@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 function Input() {
-    const ipcHandle = (url) => window.electron.ipcRenderer.send('send-url', url);
+    const ipcHandle = (url) => window.electron.ipcRenderer.invoke('send-url', url);
     const [inputValue, setInputValue] = useState("");
     
     const handleChange = (event) => {
@@ -18,7 +18,8 @@ function Input() {
 
     const handleSubmit = () => {
         alert("La valeur est : " + inputValue);
-        ipcHandle(inputValue);
+        const result = ipcHandle(inputValue);
+        console.log(result);
     }
     return (
         <div className="w-full flex justify-center py-6">

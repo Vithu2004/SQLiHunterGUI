@@ -30,7 +30,7 @@ export class AttackSurface {
 
             if (this.isAlreadyInAttackSurface(json)) return;
 
-            console.log(json);
+            //console.log(json);
             this.attackSurface.push(json);
         });
     }
@@ -83,7 +83,7 @@ export class AttackSurface {
 
         if (this.isAlreadyInAttackSurface(json)) return;
 
-        console.log(json);
+        //console.log(json);
         this.attackSurface.push(json);
     }
 

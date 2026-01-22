@@ -1,8 +1,15 @@
 import { Injecter } from "./Injecter"
-import { sendRequest, removeTrailingSlash } from "./utils.js";
 
+/**
+ * Classe Scanner
+ * Responsable de l'orchestration des attaques SQL Injection
+ * et de l'analyse des réponses serveur
+ */
 export class Scanner {
-    //Tableau des erreurs SQL
+    /**
+     * Signatures d'erreurs SQL connues par type de base de données
+     * Utilisées pour détecter les injections SQL Error-based
+     */
     static SQL_ERRORS = {
         "MySQL": [
             "you have an error in your sql syntax",
@@ -55,22 +62,34 @@ export class Scanner {
      */
     constructor(attackSurface) {
         this.attackSurface = attackSurface;
-        this.attackResults = []; // Réservé pour stocker les résultats futurs des attaques
+        //Stocke les résultats des attaques pour chaque cible
+        this.attackResults = [];
     }
 
+
+    //Lance le scan sur l'ensemble de l'attack surface
     async scan() {
-        const cibles = this.attackSurface.getAttackSurface()
+        const cibles = this.attackSurface.getAttackSurface();
         for (const cible of cibles) {
-            console.log(cible);
             const injecter = new Injecter(cible);
             const result = await injecter.inject();
-            console.log("-------------------------------")
+            this.attackResults.push(result);
+            //console.log("-------------------------------");
         }
+        console.log(this.attackResults);
+        return this.attackResults;
     }
 
-    static scanFuzzingPayload(baseline, response) {
-        const statusErrorResult = Scanner.checkStatusError(response);
-        const SQLErrorResult = Scanner.checkSQLError(baseline, response);
+    /**
+     * Analyse les résultats après injection d'un payload de fuzzing
+     * @param {object} baseline - Réponse sans injection
+     * @param {object} response - Réponse après injection
+     * @param {Injecter} injecter - Instance d'injecter
+     * @returns {string|null}
+     */
+    static scanFuzzingPayload(baseline, response, injecter) {
+        const statusErrorResult = Scanner.checkStatusError(response, injecter);
+        const SQLErrorResult = Scanner.checkSQLError(baseline, response, injecter);
         if (SQLErrorResult !== null) {
             return SQLErrorResult;
         } else if (statusErrorResult !== null) {
@@ -79,74 +98,78 @@ export class Scanner {
         return null;
     }
 
-    static scanBooleanPayload(responseTrue, responseFalse) {
+    /**
+     * Analyse les réponses issues d'une injection Boolean-based
+     * Compare la taille des réponses TRUE / FALSE
+     */
+    static scanBooleanPayload(responseTrue, responseFalse, injecter) {
         const responseTrueContentLength = Scanner.getContentLength(responseTrue);
         const responseFalseContentLength = Scanner.getContentLength(responseFalse);
+        // Tolérance de 2% sur la taille du contenu
         if ((responseTrueContentLength + (responseTrueContentLength * 0.02)) >= responseFalseContentLength 
             && (responseTrueContentLength - (responseTrueContentLength * 0.02)) <= responseFalseContentLength) {
-                return true;
+            injecter.changeResult(responseTrue.injectedParam, "BOOLEAN-BASED INJECTION", "HIGH", 80, null);
+            return true;
         }
         return false;
-
     }
-    
+
+    /**
+     * Calcule la taille du contenu d'une réponse HTTP
+     * @param {object} response
+     * @returns {number}
+     */
     static getContentLength(response) {
         if (response.headers['content-length'] === undefined || response.headers['content-length'] === null) {
             const size = Buffer.byteLength(
                 typeof response.data === "string"
                     ? response.data
                     : JSON.stringify(response.data)
-                );
-            console.log(size);
+            );
             return size;
         }
-            return response.headers['content-length'];
+        return response.headers['content-length'];
     }
 
-
-    static checkStatusError(response) {
-        const status = response.status;
-        let error = {
-            type : "Status Error",
-            error : status,
-            message : status !== 200 ? response.response.data : null
-        };
-        
-        switch (status) {
+    /**
+     * Analyse le code HTTP de la réponse
+     * @returns {string}
+     */
+    static checkStatusError(response, injecter) {
+        switch (response.status) {
             case 500 :
-                error.addToScore = 45;
-                return error;
+                injecter.changeResult(null, "Internal Server Error", "HIGH", 45, null);
+                return "CONTINUE";
             case 301 :
             case 302 : 
-                error.addToScore = 25;
-                return error;
+                injecter.changeResult(null, "Redirection", "-", 25, null);
+                return "COMPLEX CONTINUE";
             case 403 : 
             case 400 :
             case 406 :
-                error.addToScore = 20;
-                return error;
+                injecter.changeResult(null, "Blocked By WAF", "-", 20, null);
+                return "END";
             default :
-                return null;
+                return "CONTINUE";
         } 
     }
 
-    static checkSQLError(baseline, response) {
+    /**
+     * Détecte les erreurs SQL dans la réponse
+     * Compare avec la baseline pour éviter les faux positifs
+     */
+    static checkSQLError(baseline, response, injecter) {
         const htmlResponse = response.status !== 200 ? response.response.data.toLowerCase() : response.data.toLowerCase();
         const htmlBaseline = baseline.status !== 200 ? baseline.response.data.toLowerCase() : baseline.data.toLowerCase();
         for (const [dbtype, errors] of Object.entries(Scanner.SQL_ERRORS)) {
             for (const error of errors) {
                 const errorLower = error.toLowerCase();
-                if (htmlResponse.includes(errorLower) && !htmlBaseline.includes(errorLower)) {
-                    //Mettre suspect ici dans l'objet plus tard, le type de db et l'erreur utilisé
-                    return {
-                        type : "Error-based SQL Injection",
-                        database : dbtype,
-                        evidence : error,
-                        addToScore : 100
-                    }
+                if (htmlResponse.includes(errorLower) &&!htmlBaseline.includes(errorLower)) {
+                    injecter.changeResult(null, `Error SQL Injection : [${error}], Database type : ${dbtype}`, "CONFIRMED", 100, null);
+                    return "END";
                 }
             }
         }
-        return null;
+        return "CONTINUE";
     }
 }

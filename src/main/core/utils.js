@@ -28,20 +28,20 @@ export async function sendRequest(url, method = "GET", data = null) {
                     }
                 });
             }
-        console.log(`Response Status: ${response.status} for ${method} request to ${url}`);
+        //console.log(`Response Status: ${response.status} for ${method} request to ${url}`);
         return response;
     } catch (error) {
-        if (error.response) {
+        //if (error.response) {
             // Le serveur a répondu avec un code ≠ 2xx
-            console.log('Error Status SEND REQUEST :', error.response.status);
+            //console.log('Error Status SEND REQUEST :', error.response.status);
             //console.log('Message :', error.response.data);
-        } else if (error.request) {
+        //} else if (error.request) {
             // La requête a été envoyée mais aucune réponse reçue
-            console.log('Aucune réponse du serveur');
-        } else {
+            //console.log('Aucune réponse du serveur');
+        //} else {
             // Erreur lors de la configuration de la requête
-            console.log('Erreur :', error.message);
-        }
+            //console.log('Erreur :', error.message);
+        //}
         return error;
     }
 }

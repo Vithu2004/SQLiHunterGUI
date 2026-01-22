@@ -56,13 +56,13 @@ app.whenReady().then(() => {
   })
 
   // IPC test
-  ipcMain.on('send-url', async (_, url) => {
-    console.log(url);
-    let crawler = new Crawler("https://0aa7001003fd72e2804580ba00360046.web-security-academy.net");
-    let attackSurface = await crawler.startCrawl();
-    console.log("Starting injection...");
-    let scanner = new Scanner(attackSurface);
-    scanner.scan();
+  ipcMain.handle('send-url', async (_, url) => {
+    const crawler = new Crawler(url);
+    const attackSurface = await crawler.startCrawl();
+    //console.log("Starting injection...");
+    const scanner = new Scanner(attackSurface);
+    const result = scanner.scan();
+    return result;
   });
 
   createWindow()
