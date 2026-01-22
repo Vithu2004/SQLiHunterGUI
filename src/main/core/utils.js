@@ -59,3 +59,26 @@ export  function ensureTrailingSlash(url) {
 export function removeTrailingSlash(url) {
     return url.endsWith("/") ? url.slice(0, -1) : url;
 }
+
+
+export async function validateURL(url) {
+    if(url === "" || url === undefined || url === null) return false;
+    const axios = require('axios');
+    // Vérification du format de l'URL
+    const urlPattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/[\w-]*)*(\?.*)?(#.*)?$/;
+    if (!urlPattern.test(url)) {
+        return false;
+    }
+    // Ajoute "http://" si le protocole n'est pas présent
+    if (!/^https?:\/\//i.test(url)) {
+        url = "http://" + url;
+    }
+    try {
+        // Envoie une requête HEAD pour vérifier si le site répond
+        await axios.get(url);
+        return true;
+    } catch (error) {
+        console.log("Passe ici");
+        return false
+    }
+}

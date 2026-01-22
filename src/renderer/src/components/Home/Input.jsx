@@ -1,9 +1,9 @@
 //C'est ici que t'auras la logique qui va envoyer le lien au backend
-
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 function Input() {
-    const ipcHandle = (url) => window.electron.ipcRenderer.invoke('send-url', url);
+    const navigate = useNavigate();
     const [inputValue, setInputValue] = useState("");
     
     const handleChange = (event) => {
@@ -18,8 +18,8 @@ function Input() {
 
     const handleSubmit = () => {
         alert("La valeur est : " + inputValue);
-        const result = ipcHandle(inputValue);
-        console.log(result);
+        sessionStorage.setItem("targetUrl", inputValue);
+        navigate("/scanResult", { state: { url: inputValue }});
     }
     return (
         <div className="w-full flex justify-center py-6">

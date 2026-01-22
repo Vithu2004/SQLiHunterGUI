@@ -4,9 +4,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 //My Import
-
 import { Crawler } from './core/Crawler'
 import { Scanner } from './core/Scanner'
+import { validateURL } from './core/utils'
 
 
 function createWindow() {
@@ -57,12 +57,17 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.handle('send-url', async (_, url) => {
-    const crawler = new Crawler(url);
-    const attackSurface = await crawler.startCrawl();
-    //console.log("Starting injection...");
-    const scanner = new Scanner(attackSurface);
-    const result = scanner.scan();
-    return result;
+    console.log(url);
+    if(await validateURL(url) === true){
+      const crawler = new Crawler(url);
+      const attackSurface = await crawler.startCrawl();
+      //console.log("Starting injection...");
+      const scanner = new Scanner(attackSurface);
+      const result = scanner.scan();
+      return result;
+    } else {
+      return "Incorrect URL";
+    }
   });
 
   createWindow()

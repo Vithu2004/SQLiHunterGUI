@@ -76,8 +76,22 @@ export class Scanner {
             this.attackResults.push(result);
             //console.log("-------------------------------");
         }
-        console.log(this.attackResults);
+        //console.log(this.attackResults);
+        this.sortAttackResultsByScore();
         return this.attackResults;
+    }
+
+    sortAttackResultsByScore(){
+        for (let i = 0; i < this.attackResults.length; i++) {
+            for (let y = 0; y < this.attackResults.length; y++) {
+                if (this.attackResults[y].score < this.attackResults[i].score) {
+                    let temps = this.attackResults[i];
+                    this.attackResults[i] = this.attackResults[y];
+                    this.attackResults[y] = temps;
+                }
+            }
+        }
+        console.log(this.attackResults);
     }
 
     /**
@@ -138,7 +152,7 @@ export class Scanner {
     static checkStatusError(response, injecter) {
         switch (response.status) {
             case 500 :
-                injecter.changeResult(null, "Internal Server Error", "HIGH", 45, null);
+                injecter.changeResult(null, "Internal Server Error", "MEDIUM", 45, null);
                 return "CONTINUE";
             case 301 :
             case 302 : 

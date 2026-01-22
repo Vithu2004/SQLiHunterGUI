@@ -46,12 +46,11 @@ export class Injecter {
         this.cible = cible;
         //Résultat final du scan
         this.result = {
-            url : this.cible.url,
-            parameter : "",
-            method : this.cible.method,
-            vulnerabilityType : "",
             confidence : "",
             score : 0,
+            url : this.cible.url,
+            parameter : "",
+            vulnerabilityType : "",
             payloadSent : ""
         };
         //Réponse de référence sans injection

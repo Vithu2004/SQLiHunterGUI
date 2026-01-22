@@ -1,8 +1,12 @@
-import Input from "./Input";
-import Console from "./Console";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
+import Input from "../components/Home/Input";
+import Console from "../components/Console";
 
-function Body() {
-    return(
+function Home(){
+    return (
+        <div className="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+        <Header/>
         <div className="layout-container flex h-full grow flex-col justify-center py-10">
             <div className="px-4 md:px-10 lg:px-40 flex flex-1 justify-center">
                 <div className="layout-content-container flex flex-col max-w-[960px] flex-1 gap-8">
@@ -19,7 +23,9 @@ function Body() {
                 </div>
             </div>
         </div>
+        <Footer/>
+        </div>
     )
 }
 
-export default Body
+export default Home;
