@@ -163,7 +163,7 @@ export class Injecter {
                 await this.injectPayloadSimpleParam(injection, paramToInject);
                 const endTime = performance.now();
                 const duration = (endTime - startTime) / 1000;
-                if(duration > (5 + 0.2) * 0.9) {
+                if(duration > (5 + durationMoyen) * 0.9) {
                     this.changeResult(paramToInject, "TIME-BASED SQL Injection", "CONFIRMED", 90, injection);
                     return "END";
                 }

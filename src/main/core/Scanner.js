@@ -81,17 +81,9 @@ export class Scanner {
         return this.attackResults;
     }
 
-    sortAttackResultsByScore(){
-        for (let i = 0; i < this.attackResults.length; i++) {
-            for (let y = 0; y < this.attackResults.length; y++) {
-                if (this.attackResults[y].score < this.attackResults[i].score) {
-                    let temps = this.attackResults[i];
-                    this.attackResults[i] = this.attackResults[y];
-                    this.attackResults[y] = temps;
-                }
-            }
-        }
-        console.log(this.attackResults);
+    //Trie attackResult par ordre croissant du score
+    sortAttackResultsByScore() {
+        this.attackResults.sort((a, b) => b.score - a.score);
     }
 
     /**
