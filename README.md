@@ -49,3 +49,31 @@ src/
 │       ├── Scanner.js        # Main orchestration engine
 │       └── utils.js          # URL validation & HTTP helpers
 └── renderer/                 # React Frontend (Electron UI)
+```
+
+##💻 Installation
+
+Clone the repository :
+```
+git clone https://github.com/Vithu2004/sqlihuntergui.git
+cd sqlihuntergui
+```
+
+Install dependencies
+```
+npm install
+```
+
+Run in development mode
+```
+npm run dev
+```
+
+##⚠️ Disclaimer
+
+This tool is for educational purposes and authorized security auditing only. Running this scanner against targets without explicit permission is illegal. The author is not responsible for any misuse or damage caused by this application.
+
+##📝 Questions for the developer? (Optional FAQ)
+
+Performance: The scanner currently uses axios for sequential requests. Future updates will include a concurrent worker pool.
+Security: Built-in support for HTTPS and custom headers to bypass simple security filters.
