@@ -61,12 +61,12 @@ git clone https://github.com/Vithu2004/sqlihuntergui.git
 cd sqlihuntergui
 ```
 
-### Install dependencies
+### Install dependencies :
 ```
 npm install
 ```
 
-### Run in development mode
+### Run in development mode :
 ```
 npm run dev
 ```
